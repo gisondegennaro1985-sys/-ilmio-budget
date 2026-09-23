@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f5f5f7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="./manifest.webmanifest">
+<title>Il mio Budget</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;background:#f5f5f7;color:#111}*{box-sizing:border-box}body{margin:0;background:#f5f5f7}main{max-width:560px;margin:auto;padding:18px 16px 40px}h1{font-size:30px;margin:8px 0 3px}.sub{color:#777;font-size:14px;margin-bottom:18px}.card{background:#fff;border-radius:24px;padding:20px;margin:12px 0;box-shadow:0 3px 14px #0000000b}.hero{text-align:center;padding:28px 18px}.label{font-size:15px;color:#777}.amount{font-size:48px;font-weight:750;margin:6px 0 8px}.hint{font-size:13px;color:#777;line-height:1.4}.progress{height:8px;background:#e9e9ec;border-radius:99px;overflow:hidden}.progress i{display:block;height:100%;width:0;background:#111;border-radius:99px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.metric{padding:14px;background:#f7f7f8;border-radius:18px}.metric b{display:block;font-size:21px;margin-top:4px}.section-title{font-size:18px;font-weight:700;margin-bottom:10px}.small{font-size:13px;color:#777}.row{display:flex;gap:10px}.row>*{flex:1}button,input{font:inherit}button{border:0;border-radius:18px;padding:15px 18px;font-size:17px;font-weight:650;width:100%;background:#111;color:#fff}button.secondary{background:#eee;color:#111}input{width:100%;padding:15px;border:1px solid #ddd;border-radius:16px;font-size:18px;background:#fff}.redline{height:3px;background:#ddd;margin:14px 0;position:relative}.redline:before{content:"";display:block;width:var(--p,0%);height:3px;background:#d33}.notice{background:#fff5f5;border:1px solid #f0caca}.history{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid #eee}.history:last-child{border-bottom:0}.hidden{display:none!important}.danger{color:#b00020}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#eee;font-size:12px;font-weight:650}
+</style>
+</head>
+<body><main>
+<h1>Il mio Budget</h1><div class="sub" id="cycleText"></div>
+<section class="card hero"><div class="label">Quanto puoi spendere oggi?</div><div class="amount" id="daily">€0,00</div><div class="hint">Il limite di oggi non accumula il non speso dei giorni precedenti.</div></section>
+<section class="card"><div class="section-title">Ciclo 23 → 22</div><div class="redline" id="redline"></div><div class="grid"><div class="metric"><span class="small">Budget</span><b id="budget">€0,00</b></div><div class="metric"><span class="small">Speso</span><b id="spent">€0,00</b></div><div class="metric"><span class="small">Rimanente</span><b id="remaining">€0,00</b></div><div class="metric"><span class="small">Fondo risparmio</span><b id="fund">€0,00</b></div></div></section>
+<section class="card"><div class="section-title">Fondo risparmio</div><div class="hint">Accumula automaticamente il non speso rispetto alla quota giornaliera del ciclo. Non aumenta il limite di oggi.</div><div style="height:8px"></div><div class="metric"><span class="small">Salvadanaio</span><b id="piggy">€0,00</b></div></section>
+<section class="card"><div class="section-title">+ Spesa</div><div class="row"><input id="expense" inputmode="decimal" placeholder="Importo €"><button onclick="addExpense()">Aggiungi</button></div></section>
+<section class="card" id="transferCard" style="display:none"><div class="section-title">Fine ciclo</div><p class="small">Il ciclo precedente ha lasciato un Fondo risparmio. Puoi trasferirlo manualmente nel Salvadanaio.</p><div class="metric"><span class="small">Da trasferire</span><b id="transferAmount">€0,00</b></div><div style="height:10px"></div><button onclick="transferFund()">Trasferito nel Salvadanaio</button></section>
+<section class="card"><div class="section-title">Ultime spese</div><div id="history"></div></section>
+<section class="card"><div class="section-title">Impostazioni ciclo</div><div class="row"><button class="secondary" onclick="showSetup()">Modifica</button><button class="secondary" onclick="resetData()">Azzera dati</button></div></section>
+<section class="card hidden" id="setup"><div class="section-title">Nuovo ciclo</div><p class="small">Il ciclo va dal 23 al 22. Inserisci stipendio/entrata e spese fisse.</p><input id="income" inputmode="decimal" placeholder="Entrata / stipendio €"><br><br><input id="fixed" inputmode="decimal" placeholder="Spese fisse €"><br><br><input id="manualBudget" inputmode="decimal" placeholder="Budget disponibile (opzionale) €"><br><br><button onclick="saveSetup()">Salva ciclo</button></section>
+</main>
+<script>
+const KEY='budgetV8_fixed';
+const DEFAULT={income:1900,fixed:835,budget:null,expenses:[],piggy:0,lastCycleKey:null,pendingFund:0};
+let data=JSON.parse(localStorage.getItem(KEY)||'null')||structuredClone(DEFAULT);
+function save(){localStorage.setItem(KEY,JSON.stringify(data))}
+function euro(n){return new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'}).format(Math.max(0,n||0))}
+function num(id){let v=document.getElementById(id).value.trim().replace(/\./g,'').replace(',','.');return parseFloat(v)||0}
+function cycleStart(d=new Date()){let x=new Date(d);x.setHours(0,0,0,0);if(x.getDate()<23)x.setMonth(x.getMonth()-1);x.setDate(23);return x}
+function cycleKey(s=cycleStart()){return s.getFullYear()+'-'+String(s.getMonth()+1).padStart(2,'0')+'-23'}
+function cycleEnd(s=cycleStart()){let e=new Date(s);e.setMonth(e.getMonth()+1);e.setDate(22);e.setHours(23,59,59,999);return e}
+function totalDays(s=cycleStart()){return Math.round((cycleEnd(s)-s)/86400000)+1}
+function daysPassed(s=cycleStart()){let now=new Date();return Math.max(1,Math.min(totalDays(s),Math.floor((now-s)/86400000)+1))}
+function ensureCycle(){let k=cycleKey();if(data.lastCycleKey===null){data.lastCycleKey=k;save();return}if(data.lastCycleKey!==k){let oldFund=calculateFund(new Date(data.lastCycleKey));if(oldFund>0)data.pendingFund=Math.max(data.pendingFund||0,oldFund);data.expenses=[];data.fund=0;data.lastCycleKey=k;save()}}
+function budget(){return data.budget!=null?Math.max(0,data.budget):Math.max(0,data.income-data.fixed)}
+function currentExpenses(){let s=cycleStart();let e=cycleEnd(s);return data.expenses.filter(x=>{let d=new Date(x.date);return d>=s&&d<=e})}
+function calculateFund(s){let ex=data.expenses.filter(x=>{let d=new Date(x.date);return d>=s&&d<=cycleEnd(s)});let dailyBase=budget()/totalDays(s);let sum=0;for(let i=0;i<daysPassed(s)-1;i++){let day=new Date(s);day.setDate(day.getDate()+i);let spent=ex.filter(x=>new Date(x.date).toDateString()===day.toDateString()).reduce((a,b)=>a+b.amount,0);sum+=Math.max(0,dailyBase-spent)}return sum}
+function render(){ensureCycle();let s=cycleStart(), ex=currentExpenses(), spent=ex.reduce((a,b)=>a+b.amount,0), b=budget(), rem=Math.max(0,b-spent), days=totalDays(s), passed=daysPassed(s), dailyBase=b/days, todayKey=new Date().toDateString(), todaySpent=ex.filter(x=>new Date(x.date).toDateString()===todayKey).reduce((a,b)=>a+b.amount,0), daily=Math.max(0,dailyBase-todaySpent);data.fund=calculateFund(s);save();document.getElementById('daily').textContent=euro(daily);document.getElementById('budget').textContent=euro(b);document.getElementById('spent').textContent=euro(spent);document.getElementById('remaining').textContent=euro(rem);document.getElementById('fund').textContent=euro(data.fund);document.getElementById('piggy').textContent=euro(data.piggy);document.getElementById('cycleText').textContent='Ciclo attuale: '+s.toLocaleDateString('it-IT')+' → '+cycleEnd(s).toLocaleDateString('it-IT');document.getElementById('redline').style.setProperty('--p',(passed/days*100)+'%');renderHistory(ex);let tc=document.getElementById('transferCard');if(data.pendingFund>0){tc.style.display='block';document.getElementById('transferAmount').textContent=euro(data.pendingFund)}else tc.style.display='none'}
+function renderHistory(ex){let h=document.getElementById('history');if(!ex.length){h.innerHTML='<div class="small">Nessuna spesa registrata nel ciclo.</div>';return}h.innerHTML=ex.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8).map(x=>'<div class="history"><span>'+new Date(x.date).toLocaleDateString('it-IT')+'</span><b>'+euro(x.amount)+'</b></div>').join('')}
+function addExpense(){let v=num('expense');if(v<=0)return;data.expenses.push({amount:v,date:new Date().toISOString()});document.getElementById('expense').value='';save();render()}
+function showSetup(){document.getElementById('setup').classList.remove('hidden');document.getElementById('income').value=data.income;document.getElementById('fixed').value=data.fixed;document.getElementById('manualBudget').value=data.budget??''}
+function saveSetup(){data.income=num('income');data.fixed=num('fixed');let m=num('manualBudget');data.budget=m>0?m:null;data.expenses=[];data.fund=0;data.lastCycleKey=cycleKey();save();document.getElementById('setup').classList.add('hidden');render()}
+function transferFund(){data.piggy=(data.piggy||0)+(data.pendingFund||0);data.pendingFund=0;save();render()}
+function resetData(){if(confirm('Azzero tutti i dati locali?')){localStorage.removeItem(KEY);location.reload()}}
+render();if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{})}
+</script></body></html>
