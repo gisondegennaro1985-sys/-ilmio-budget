@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Il mio Budget v8</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f5f7;color:#171717;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif}
+header{padding:28px 18px 14px;background:#fff;border-bottom:1px solid #eee;position:sticky;top:0;z-index:5}
+h1{font-size:27px;margin:0 0 5px}.sub{color:#777;font-size:14px}.cycle{margin-top:12px;font-size:13px;color:#555}
+main{max-width:680px;margin:auto;padding:14px 14px 40px}.card{background:#fff;border-radius:20px;padding:18px;margin-bottom:13px;box-shadow:0 2px 12px rgba(0,0,0,.05)}
+.hero{text-align:center;padding:24px 18px}.hero small{font-weight:700;color:#777}.hero .amount{font-size:42px;font-weight:800;margin:8px 0}.hero .remain{font-size:14px;color:#666}
+.row{display:flex;justify-content:space-between;gap:15px;align-items:center;margin:8px 0}.row b{font-size:18px}
+.bar{height:9px;background:#eee;border-radius:20px;overflow:hidden;margin:12px 0 5px}.bar i{display:block;height:100%;width:0;background:#222;border-radius:20px}
+label{display:block;font-size:12px;font-weight:700;color:#777;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px}
+input{width:100%;border:1px solid #ddd;border-radius:13px;padding:13px 12px;font-size:18px;background:#fafafa}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.full{grid-column:1/-1}
+button{width:100%;border:0;border-radius:14px;padding:14px;font-size:16px;font-weight:750;background:#111;color:#fff}
+button.secondary{background:#eee;color:#111}.danger{color:#a00;font-size:13px;text-align:center;margin-top:10px}
+.green{color:#18794e}.orange{color:#a15c00}.red{color:#b00020}
+.fondo{background:#fafafa}.hint{font-size:13px;color:#666;line-height:1.4}.suggest{font-size:15px;margin-top:9px}
+.expenseRow{display:grid;grid-template-columns:1fr 105px;gap:9px;align-items:center;padding:7px 0;border-bottom:1px solid #eee}.expenseRow:last-child{border-bottom:0}
+.expenseRow input{font-size:15px;padding:10px}.date{color:#555;background:#fff}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<header>
+<h1>💰 Il mio Budget</h1>
+<div class="sub">Il tuo budget personale</div>
+<div class="cycle" id="cycleText"></div>
+</header>
+
+<main>
+<div class="card">
+  <div class="grid">
+    <div><label>Entrata del ciclo</label><input id="income" type="number" step=".01" inputmode="decimal"></div>
+    <div><label>Spese fisse</label><input id="fixed" type="number" step=".01" inputmode="decimal"></div>
+    <div class="full"><button onclick="startNewCycle()">Salva nuovo ciclo</button></div>
+  </div>
+</div>
+
+<div class="card hero">
+  <small>QUANTO PUOI SPENDERE OGGI?</small>
+  <div class="amount" id="todayLimit">€ 0,00</div>
+  <div class="remain" id="todayInfo"></div>
+</div>
+
+<div class="card">
+  <div class="row"><span>Budget disponibile</span><b id="available">€ 0,00</b></div>
+  <div class="row"><span>Speso nel ciclo</span><b id="spent">€ 0,00</b></div>
+  <div class="row"><span>Rimanente</span><b id="remaining">€ 0,00</b></div>
+  <div class="bar"><i id="bar"></i></div>
+</div>
+
+<div class="card">
+  <label>+ Spesa di oggi</label>
+  <input id="todayExpense" type="number" step=".01" min="0" inputmode="decimal" placeholder="0,00">
+  <div class="hint" style="margin-top:8px">Inserisci solo l'importo. Il budget giornaliero si aggiorna automaticamente.</div>
+</div>
+
+<div class="card fondo">
+  <div class="row"><span><b>Fondo risparmio</b></span><b id="fund">€ 0,00</b></div>
+  <div class="hint">Soldi non spesi giornalmente. Il fondo resta separato dal limite di oggi.</div>
+  <div class="suggest" id="suggestion"></div>
+</div>
+
+<div class="card">
+  <div class="row"><span>Giorni rimanenti</span><b id="days">0</b></div>
+  <div class="row"><span>Budget giornaliero base</span><b id="baseDaily">€ 0,00</b></div>
+</div>
+
+<div class="card">
+  <div class="row"><b>Spese del ciclo</b><b id="cycleTotal">€ 0,00</b></div>
+  <div id="expenseList"></div>
+</div>
+
+<div class="card">
+  <button class="secondary" onclick="resetData()">Azzera dati dell'app</button>
+  <div class="danger">Usalo solo se vuoi ripartire da zero.</div>
+</div>
+</main>
+
+<script>
+const KEY="il_mio_budget_v8";
+const euro=n=>new Intl.NumberFormat("it-IT",{style:"currency",currency:"EUR"}).format(Number(n)||0);
+const todayKey=()=>{const d=new Date();return d.toISOString().slice(0,10)};
+const round=n=>Math.round((Number(n)||0)*100)/100;
+
+let data;
+try{data=JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){data=null}
+if(!data)data={income:1756,fixed:750,cycleStart:null,expenses:{},fund:0,history:[]};
+if(!data.expenses)data.expenses={};
+if(!Array.isArray(data.history))data.history=[];
+
+function save(){localStorage.setItem(KEY,JSON.stringify(data))}
+function cycleDates(){
+ const now=new Date();
+ let y=now.getFullYear(),m=now.getMonth();
+ let start=new Date(y,m,23);
+ if(now.getDate()<23) start=new Date(y,m-1,23);
+ let end=new Date(start.getFullYear(),start.getMonth()+1,22);
+ return {start,end};
+}
+function keyDate(d){return d.toISOString().slice(0,10)}
+function inCycle(k,c){return k>=keyDate(c.start)&&k<=keyDate(c.end)}
+function cycleExpenseTotal(c){
+ return Object.entries(data.expenses).filter(([k])=>inCycle(k,c)).reduce((s,[,v])=>s+round(v),0);
+}
+function daysLeft(c){
+ const now=new Date(); const n=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+ const e=new Date(c.end.getFullYear(),c.end.getMonth(),c.end.getDate());
+ return Math.max(1,Math.floor((e-n)/86400000)+1);
+}
+function cycleDayCount(c){return Math.floor((c.end-c.start)/86400000)+1}
+function currentTodayExpense(){return round(data.expenses[todayKey()]||0)}
+
+function render(){
+ const c=cycleDates();
+ const available=Math.max(0,round(data.income-data.fixed));
+ const total=cycleExpenseTotal(c);
+ const remaining=Math.max(0,round(available-total));
+ const days=daysLeft(c);
+ const spentToday=currentTodayExpense();
+
+ // Il limite di oggi viene ricalcolato sul budget residuo del ciclo.
+ // La spesa di oggi NON viene sottratta una seconda volta: il valore mostrato
+ // è ciò che si può ancora spendere oggi.
+ const todayLimit=Math.max(0,round((remaining)/days));
+ const baseDaily=Math.max(0,round(available/days));
+
+ const startLabel=c.start.toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit",year:"numeric"});
+ const endLabel=c.end.toLocaleDateString("it-IT",{day:"2-digit",month:"2-digit",year:"numeric"});
+ document.getElementById("cycleText").textContent=`Ciclo ${startLabel} → ${endLabel}`;
+ document.getElementById("income").value=data.income;
+ document.getElementById("fixed").value=data.fixed;
+ document.getElementById("available").textContent=euro(available);
+ document.getElementById("spent").textContent=euro(total);
+ document.getElementById("remaining").textContent=euro(remaining);
+ document.getElementById("days").textContent=days;
+ document.getElementById("baseDaily").textContent=euro(baseDaily);
+ document.getElementById("todayLimit").textContent=euro(todayLimit);
+ document.getElementById("todayExpense").value=spentToday||"";
+ document.getElementById("todayInfo").textContent=spentToday>0?`Speso oggi: ${euro(spentToday)}`:"Nessuna spesa registrata oggi";
+ document.getElementById("cycleTotal").textContent=euro(total);
+
+ const pct=available>0?Math.min(100,(total/available)*100):0;
+ document.getElementById("bar").style.width=pct+"%";
+
+ // Fondo: somma del limite non utilizzato dei giorni precedenti del ciclo.
+ let fund=0;
+ const now=new Date(); const start=new Date(c.start);
+ for(let d=new Date(start);d<new Date(now.getFullYear(),now.getMonth(),now.getDate());d.setDate(d.getDate()+1)){
+   const k=keyDate(d);
+   if(inCycle(k,c)){
+     // limite teorico del giorno basato sul residuo disponibile al momento,
+     // semplificato come quota iniziale del ciclo.
+     const daySpent=round(data.expenses[k]||0);
+     fund+=Math.max(0,round(baseDaily-daySpent));
+   }
+ }
+ data.fund=round(fund);
+ document.getElementById("fund").textContent=euro(data.fund);
+ const weekly=Math.round((baseDaily*7*0.5)*100)/100;
+ document.getElementById("suggestion").textContent=weekly>0?`Suggerimento: potresti mettere da parte circa ${euro(weekly)} questa settimana.`:"";
+
+ const box=document.getElementById("expenseList");box.innerHTML="";
+ const entries=Object.entries(data.expenses).filter(([k])=>inCycle(k,c)).sort((a,b)=>a[0].localeCompare(b[0]));
+ if(!entries.length){box.innerHTML='<div class="hint">Nessuna spesa nel ciclo.</div>'}
+ else entries.forEach(([k,v])=>{
+   const row=document.createElement("div");row.className="expenseRow";
+   const date=document.createElement("input");date.className="date";date.type="date";date.value=k;date.disabled=true;
+   const inp=document.createElement("input");inp.type="number";inp.step=".01";inp.min="0";inp.value=v;inp.inputMode="decimal";
+   inp.oninput=()=>{const n=parseFloat(inp.value);if(Number.isFinite(n)&&n>0)data.expenses[k]=round(n);else delete data.expenses[k];save();render()};
+   row.append(date,inp);box.appendChild(row);
+ });
+}
+
+function startNewCycle(){
+ const income=round(parseFloat(document.getElementById("income").value));
+ const fixed=round(parseFloat(document.getElementById("fixed").value));
+ if(income<0||fixed<0){alert("Inserisci importi validi.");return}
+ const c=cycleDates();
+ if(confirm("Salvare i nuovi parametri del ciclo?")){
+   data.income=income;data.fixed=fixed;data.cycleStart=keyDate(c.start);save();render();
+ }
+}
+
+document.getElementById("todayExpense").addEventListener("input",e=>{
+ const n=parseFloat(e.target.value);
+ const k=todayKey();
+ if(Number.isFinite(n)&&n>0)data.expenses[k]=round(n);else delete data.expenses[k];
+ save();render();
+});
+document.getElementById("income").addEventListener("change",()=>{data.income=round(parseFloat(document.getElementById("income").value));save();render()});
+document.getElementById("fixed").addEventListener("change",()=>{data.fixed=round(parseFloat(document.getElementById("fixed").value));save();render()});
+
+function resetData(){
+ if(confirm("Vuoi davvero azzerare tutti i dati dell'app?")){
+   localStorage.removeItem(KEY);
+   data={income:1756,fixed:750,cycleStart:null,expenses:{},fund:0,history:[]};
+   save();render();
+ }
+}
+render();
+</script>
+</body>
+</html>
